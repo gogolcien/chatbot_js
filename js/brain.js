@@ -1,5 +1,50 @@
 let AGENTE_ACTIVO = null;
 
+const OLLAMA_URL = 'http://localhost:11434/api/chat';
+const OLLAMA_MODEL = 'qwen3:14b';
+
+function construirSystemPrompt() {
+    const kbTexto = BASE_CONOCIMIENTO.map(item => `- ${item.resp}`).join('\n');
+    return (
+        "Eres el asistente virtual de IMACOP, una operadora de viajes que atiende " +
+        "a agentes de viaje registrados. Responde ÚNICAMENTE con base en la " +
+        "siguiente información oficial. Si la pregunta no está cubierta por esta " +
+        "información, dilo con honestidad y sugiere contactar al equipo de ventas " +
+        "al 33-3333-3333, en vez de inventar una respuesta.\n\n" +
+        `INFORMACIÓN OFICIAL:\n${kbTexto}\n\n` +
+        "Responde en español de México, en 2-3 frases como máximo, tono natural."
+    );
+}
+
+function preguntarIA(txt) {
+    fetch(OLLAMA_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: OLLAMA_MODEL,
+            messages: [
+                { role: 'system', content: construirSystemPrompt() },
+                { role: 'user', content: txt }
+            ],
+            stream: false
+        })
+    })
+        .then(res => {
+            if (!res.ok) throw new Error('Ollama respondió ' + res.status);
+            return res.json();
+        })
+        .then(data => {
+            hablar(data.message.content, () => volverAMenu());
+        })
+        .catch(err => {
+            console.error('Error consultando Ollama:', err);
+            hablar(
+                "No pude conectarme con el modelo local. Verifica que Ollama esté corriendo",
+                () => volverAMenu()
+            );
+        });
+}
+
 // ================= CONFIGURACIÓN =================
 AVATAR = {
     neutral: './assets/saludo.gif',
@@ -8,7 +53,6 @@ AVATAR = {
     exito: './assets/exito.gif'
 };
 
-// VARIABLE DINÁMICA (Se llenará con el JSON)
 let DESTINOS_VALIDOS = [];
 DESTINOS_MAP = {};
 
@@ -119,7 +163,7 @@ function setAvatar(tipo) {
         txt.innerText = "TERMINADO";
     } else {
         img.src = AVATAR.neutral;
-        txt.innerText = "ESCRIBE TU RESPUESTA...";
+        txt.innerText = "ESCRIBE TU PETICIÓN...";
     }
 }
 
@@ -234,10 +278,13 @@ function iniciar() {
     setTimeout(() => {
         log('BOT',
             "<b>Hola, soy tu Asistente Virtual.</b><br>Puedo ayudarte con:<br>" +
-            "🏨 Cotizar Hoteles y Circuitos<br>" +
-            "💳 Subir Pagos y Facturar<br>" +
+            "🏨 Cotizar precio de Hoteles y Circuitos<br>" +
+            "💳 Subir Pagos<br>" +
+            "📄 Facturación<br>" +
             "🎟️ Descargar Cupones y Publicidad<br>" +
             "👤 Alta de Usuarios y White Label<br>" +
+            "🧑‍🏫 Capacitación<br>"+
+            "⤴️ Guía para asesorar a tus clientes<br>"+
             "❓ Dudas generales"
         );
 
@@ -351,7 +398,7 @@ function cerebro(txt)
             );
         }
         else {
-            hablar("No entendí. Di Cotizar , Subir Pago o Facturar");
+            preguntarIA(txt);
         }
         return;
     }
@@ -374,7 +421,7 @@ function cerebro(txt)
                logDestinoVisual(destinoEncontrado, imagen_destino_completa);
 
             estado = 'FECHA_IN';
-            hablar(`Perfecto, ${destinoEncontrado}. Dime la fecha de ENTRADA. Ejemplo: 20 de mayo.`);
+            hablar(`Perfecto, ${destinoEncontrado}. Dime la fecha en que iniciaras el viaje. Ejemplo: 20 de mayo.`);
         } else {
             hablar(`No encontré "${txt}" en la base de datos. Intenta con otro.`);
         }
@@ -395,18 +442,18 @@ function cerebro(txt)
         datos.fechaEntrada = fechaObj;
         datos.strEntrada = txt;
         estado = 'FECHA_OUT';
-        hablar("Ok. Ahora dime la fecha de SALIDA.");
+        hablar("Ok. Ahora dime la fecha del fin del viaje.");
         return;
     }
 
     if (estado === 'FECHA_OUT') {
         const fechaObj = parsearFecha(txt);
         if (!fechaObj) {
-            hablar("Repite la fecha de salida.");
+            hablar("Repite la fecha del fin del viaje.");
             return;
         }
         if (fechaObj <= datos.fechaEntrada) {
-            hablar(`La salida debe ser posterior a la entrada. Dime otra fecha.`);
+            hablar(`La fecha fin debe ser posterior a la fecha inicio. Dime otra fecha.`);
             return;
         }
         datos.fechaSalida = fechaObj;
@@ -586,11 +633,20 @@ function mostrarBotonAbrir(texto, url) {
     box.scrollTop = box.scrollHeight;
 }
 
-function volverAMenu(delay = 800) {
+function volverAMenu(delay = 3000) {
     setTimeout(() => {
         estado = 'MENU';
         hablar(
-            "¿Puedo ayudarte en algo más? Puedes decir cotizar, facturar o publicidad.",
+            "<b>¿Puedo ayudarte en algo más?</b>"+
+            "<br>El asistente virtual cuenta con los siguientes servicios:<br>" +
+            "🏨 Cotizar precio de Hoteles y Circuitos<br>" +
+            "💳 Subir Pagos<br>" +
+            "📄 Facturación<br>" +
+            "🎟️ Descargar Cupones y Publicidad<br>" +
+            "👤 Alta de Usuarios y White Label<br>" +
+            "🧑‍🏫 Capacitación<br>"+
+            "⤴️ Guía para asesorar a tus clientes<br>"+
+            "❓ Dudas generales",
             () => escuchar()
         );
     }, delay);
