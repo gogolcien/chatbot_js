@@ -24,7 +24,6 @@ let datos = {
 };
 
 // ================= CARGA DE DATOS (JSON) =================
-
 function buscarEnBaseConocimiento(texto) {
     for (let item of BASE_CONOCIMIENTO) {
         const encontrado = item.tags.some(tag => texto.includes(tag));
@@ -85,7 +84,6 @@ window.onload = function () {
 };
 
 // ================= UTILIDADES DE TEXTO =================
-
 function normalizar(texto) {
     return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -133,15 +131,11 @@ function log(user, msg) {
     box.scrollTop = box.scrollHeight;
 }
 
-// Muestra la respuesta del bot en el chat y luego habilita el input de texto
-// (o ejecuta el callback, si se pasó uno) para continuar la conversación.
 function hablar(texto, callback)
 {
     setAvatar('hablar');
     log('BOT', texto);
 
-    // Pequeña pausa para que la respuesta se sienta "natural" antes de
-    // habilitar de nuevo el input (equivalente al antiguo utter.onend)
     setTimeout(() => {
         if (callback) {
             callback();
@@ -151,7 +145,6 @@ function hablar(texto, callback)
     }, 300);
 }
 
-// Habilita el campo de texto para que el usuario escriba su respuesta.
 function escuchar() {
     setAvatar('neutral');
     const input = document.getElementById('text-input');
@@ -164,7 +157,6 @@ function escuchar() {
     if (btn) btn.disabled = false;
 }
 
-// Se dispara al enviar el formulario / hacer click en "Enviar" / presionar Enter.
 function enviarTexto() {
     const input = document.getElementById('text-input');
     if (!input) return;
@@ -186,7 +178,6 @@ function enviarTexto() {
     }, 300);
 }
 
-// Permite enviar con la tecla Enter
 document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('text-input');
     const btn = document.getElementById('btn-send');
@@ -224,7 +215,6 @@ function seleccionarAgente(tipo) {
         `Te atenderá ${AGENTE_ACTIVO.nombre}`;
 }
 
-//!INICIAR CONVERSACION
 function iniciar() {
     if (!AGENTE_ACTIVO) {
         alert("Por favor selecciona un agente (Ian o Mia) primero.");
@@ -242,7 +232,6 @@ function iniciar() {
     inputArea.classList.remove('hidden');
 
     setTimeout(() => {
-        // Mensaje en el chat
         log('BOT',
             "<b>Hola, soy tu Asistente Virtual.</b><br>Puedo ayudarte con:<br>" +
             "🏨 Cotizar Hoteles y Circuitos<br>" +
@@ -380,7 +369,6 @@ function cerebro(txt)
         if (destinoEncontrado) {
             datos.destino = destinoEncontrado;
 
-             // Mostrar la Imagen
              datos.imagenDestino = DESTINOS_MAP[destinoEncontrado]?.imagen || null;
              let imagen_destino_completa='https://nuevo.sistemaimacop.com.mx/'+datos.imagenDestino;
                logDestinoVisual(destinoEncontrado, imagen_destino_completa);
