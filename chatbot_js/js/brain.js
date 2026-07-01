@@ -1,12 +1,22 @@
+let escuchando = false;
+
 let AGENTE_ACTIVO = null;
 
 // ================= CONFIGURACIÓN =================
 AVATAR = {
     neutral: './assets/saludo.gif',
     hablar: './assets/explicando.gif',
+    oir: './assets/escuchando.gif',
     pensar: './assets/pensando.gif',
     exito: './assets/exito.gif'
 };
+
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.lang = 'es-MX';
+recognition.continuous = false;
+recognition.interimResults = true;
+
+const synth = window.speechSynthesis;
 
 // VARIABLE DINÁMICA (Se llenará con el JSON)
 let DESTINOS_VALIDOS = [];
@@ -23,7 +33,15 @@ let datos = {
     habData: []
 };
 
+let VOCES_LISTAS = false; //!carga de voces
+
+recognition.lang = 'es-MX';
+recognition.continuous = false;
+recognition.interimResults = false;
+recognition.maxAlternatives = 1;
+
 // ================= CARGA DE DATOS (JSON) =================
+
 function buscarEnBaseConocimiento(texto) {
     for (let item of BASE_CONOCIMIENTO) {
         const encontrado = item.tags.some(tag => texto.includes(tag));
@@ -84,6 +102,7 @@ window.onload = function () {
 };
 
 // ================= UTILIDADES DE TEXTO =================
+
 function normalizar(texto) {
     return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -105,21 +124,30 @@ function validarDestino(textoUsuario) {
 function setAvatar(tipo) {
     const img = document.getElementById('avatar-img');
     const txt = document.getElementById('estado-texto');
+    const mic = document.getElementById('mic-status');
     img.className = "w-48 h-48 object-contain  border-4 border-indigo-500 bg-white shadow-xl transition-all duration-200";
 
     if (tipo === 'hablar') {
         img.src = AVATAR.hablar;
         img.classList.add('hablando');
-        txt.innerText = "RESPONDIENDO...";
+        mic.className = "w-3 h-3 bg-red-500 ";
+        txt.innerText = "HABLANDO...";
+    } else if (tipo === 'oir') {
+        img.src = AVATAR.oir;
+        img.classList.add('escuchando');
+        mic.className = "w-3 h-3 bg-green-500 animate-pulse";
+        txt.innerText = "ESCUCHANDO...";
     } else if (tipo === 'pensar') {
         img.src = AVATAR.pensar;
+        mic.className = "w-3 h-3 bg-yellow-500 ";
         txt.innerText = "PROCESANDO...";
     } else if (tipo === 'exito') {
         img.src = AVATAR.exito;
         txt.innerText = "TERMINADO";
+        mic.className = "w-3 h-3 bg-blue-500 ";
     } else {
         img.src = AVATAR.neutral;
-        txt.innerText = "ESCRIBE TU RESPUESTA...";
+        txt.innerText = "LISTO";
     }
 }
 
@@ -133,70 +161,103 @@ function log(user, msg) {
 
 function hablar(texto, callback)
 {
+    if (!VOCES_LISTAS) {
+        console.warn("⏳ Voces aún no listas, reintentando...");
+        setTimeout(() => hablar(texto, callback), 300);
+        return;
+    }
+
+    synth.cancel();
     setAvatar('hablar');
     log('BOT', texto);
 
-    setTimeout(() => {
+    const utter = new SpeechSynthesisUtterance(texto);
+    const voces = synth.getVoices();
+    let voz = null;
+
+    if (AGENTE_ACTIVO?.voz === 'female') {
+        voz = voces.find(v => v.name === VOZ_FEMENINA);
+    } else {
+        voz = voces.find(v => v.name === VOZ_MASCULINA);
+    }
+
+    if (!voz) {
+        voz = voces.find(v => v.lang === 'es-MX')
+            || voces.find(v => v.lang.startsWith('es'));
+    }
+
+    if (voz) {
+        utter.voice = voz;
+        console.log("🎙️ Voz usada:", voz.name);
+    }
+
+    utter.lang   = 'es-MX';
+    utter.rate   = 0.92;
+    utter.pitch  = AGENTE_ACTIVO?.voz === 'female' ? 1.08 : 0.95;
+    utter.volume = 1;
+
+    utter.onend = () => {
         if (callback) {
             callback();
         } else {
             escuchar();
         }
-    }, 300);
+    };
+
+    synth.speak(utter);
 }
 
 function escuchar() {
-    setAvatar('neutral');
-    const input = document.getElementById('text-input');
-    const btn = document.getElementById('btn-send');
-    if (input) {
-        input.disabled = false;
-        input.value = '';
-        input.focus();
+    if (escuchando) return;
+    setAvatar('oir');
+    escuchando = true;
+    try {
+        recognition.start();
+    } catch (e) {
+        console.warn("Ya estaba escuchando");
     }
-    if (btn) btn.disabled = false;
 }
 
-function enviarTexto() {
-    const input = document.getElementById('text-input');
-    if (!input) return;
-
-    const texto = input.value.trim();
-    if (!texto) return;
-
-    const input2 = input;
-    input2.disabled = true;
-    const btn = document.getElementById('btn-send');
-    if (btn) btn.disabled = true;
-
-    log('TU', texto);
-    input.value = '';
-    setAvatar('pensar');
-
-    setTimeout(() => {
-        cerebro(texto.toLowerCase());
-    }, 300);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    const input = document.getElementById('text-input');
-    const btn = document.getElementById('btn-send');
-
-    if (input) {
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                enviarTexto();
-            }
-        });
+recognition.onend = () => {
+    escuchando = false;
+    if (estado !== 'OFF') {
+        setTimeout(() => {
+            escuchar();
+        }, 800);
     }
-    if (btn) {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            enviarTexto();
-        });
+};
+
+recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript.toLowerCase();
+    const isFinal = e.results[0].isFinal;
+    document.getElementById('live-text').innerText = transcript;
+    if (isFinal) {
+        recognition.stop();
+        setAvatar('pensar');
+        log('TU', transcript); // Registra lo que se escuchó en el chat
+        setTimeout(() => {
+            cerebro(transcript);
+        }, 500);
     }
-});
+};
+
+recognition.onerror = (e) => {
+    log('SISTEMA', 'Error de micro: ' + e.error);
+    if (e.error !== "no-speech") {
+        log('SISTEMA', 'Error de micro: ' + e.error);
+    }
+
+    if (e.error === 'not-allowed') {
+        hablar("Necesito permiso para usar el micrófono.");
+    } else if (e.error === 'no-speech') {
+        hablar("No te escuché. Repite por favor.");
+    } else if (e.error === 'network') {
+        escuchando = false;
+        setTimeout(() => escuchar(), 1500);
+    } else {
+        setAvatar('neutral');
+    }
+};
 
 function seleccionarAgente(tipo) {
     AGENTE_ACTIVO = AGENTES[tipo];
@@ -215,11 +276,57 @@ function seleccionarAgente(tipo) {
         `Te atenderá ${AGENTE_ACTIVO.nombre}`;
 }
 
+function obtenerVozCorrecta() {
+    const voices = synth.getVoices();
+
+    if (!voices.length) return null;
+
+    if (AGENTE_ACTIVO.voz === 'female') {
+        return voices.find(v =>
+            v.lang.startsWith('es') &&
+            /sabina|paulina|maria|female/i.test(v.name)
+        ) || voices.find(v => v.lang.startsWith('es'));
+    } else {
+        return voices.find(v =>
+            v.lang.startsWith('es') &&
+            /raul|jorge|male/i.test(v.name)
+        ) || voices.find(v => v.lang.startsWith('es'));
+    }
+}
+
+//!MOVIL FORZAR CARGA DE VOCES
+if (speechSynthesis.onvoiceschanged !== undefined) {
+    speechSynthesis.onvoiceschanged = () => {
+        VOCES_LISTAS = true;
+        console.log("Voces cargadas en móvil");
+    };
+}
+
+// Intentar cargar voces manualmente cada segundo hasta que funcione
+let checkVoces = setInterval(() => {
+    let voces = speechSynthesis.getVoices();
+    if (voces.length > 0) {
+        VOCES_LISTAS = true;
+        clearInterval(checkVoces);
+        if(DESTINOS_VALIDOS.length > 0) {
+            const btn = document.getElementById('btn-start');
+            btn.innerText = "EMPEZAR";
+        }
+    }
+}, 1000);
+
+//!INICIAR CONVERSACION
 function iniciar() {
     if (!AGENTE_ACTIVO) {
         alert("Por favor selecciona un agente (Ian o Mia) primero.");
         return;
     }
+
+    // Desbloqueo de audio para móviles
+    const desbloqueo = new SpeechSynthesisUtterance("");
+    desbloqueo.volume = 0;
+    window.speechSynthesis.speak(desbloqueo);
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
 
     estado = 'MENU';
 
@@ -227,7 +334,7 @@ function iniciar() {
     const btnStart = document.getElementById('btn-start');
     btnStart.classList.add('hidden');
 
-    // 2. Mostramos el área de input de texto
+    // 2. Mostramos el área de input de voz visual
     const inputArea = document.getElementById('input-area');
     inputArea.classList.remove('hidden');
 
@@ -242,13 +349,20 @@ function iniciar() {
             "❓ Dudas generales"
         );
 
+        // Voz del bot (Se elimina la mención a texto)
         hablar(
-            "Hola, bienvenido. ¿En qué te puedo ayudar? Escribe lo que necesitas.",
+            "Hola, bienvenido. ¿En qué te puedo ayudar? Dime lo que necesitas.",
             () => {
                 escuchar();
             }
         );
     }, 100);
+}
+
+function desbloquearAudio() {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    speechSynthesis.speak(u);
 }
 
 function cerebro(txt)
@@ -543,6 +657,28 @@ function finalizar(tipo, payload) {
     }
 }
 
+function obtenerVozLatina() {
+    const voces = speechSynthesis.getVoices();
+
+    return voces.find(v =>
+        v.lang === 'es-MX' &&
+        (v.name.includes('Google') || v.name.includes('Microsoft'))
+    ) ||
+    voces.find(v => v.lang.startsWith('es')) ||
+    voces[0];
+}
+
+speechSynthesis.onvoiceschanged = () => {
+    const voces = speechSynthesis.getVoices();
+    if (voces.length > 0) {
+        VOCES_LISTAS = true;
+        console.log(
+            "🎧 Voces listas:",
+            voces.map(v => `${v.name} (${v.lang})`)
+        );
+    }
+};
+
 function logDestinoVisual(destino, imagenUrl) {
     const box = document.getElementById('chat-box');
 
@@ -592,7 +728,7 @@ function volverAMenu(delay = 800) {
     setTimeout(() => {
         estado = 'MENU';
         hablar(
-            "¿Puedo ayudarte en algo más?",
+            "¿Puedo ayudarte en algo más? Puedes decir cotizar, facturar o publicidad.",
             () => escuchar()
         );
     }, delay);
